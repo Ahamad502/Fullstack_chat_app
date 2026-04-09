@@ -1,7 +1,7 @@
 import { generateToken } from "../lib/utils.js";
 import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
-import { containerClient } from "../lib/cloudinary.js";
+import { containerClient, generateSASUrl, getBlobUrl, waitForReady, detectImageFormat } from "../lib/cloudinary.js";
 
 export const signup = async (req, res) => {
   const { fullName, email, password } = req.body;
@@ -67,7 +67,8 @@ export const login = async (req, res) => {
       _id: user._id,
       fullName: user.fullName,
       email: user.email,
-      profilePic: user.profilePic,
+      profilePic: user.profilePic ? await getBlobUrl(user.profilePic) : "",
+      createdAt: user.createdAt,
     });
   } catch (error) {
     console.log("Error in login controller", error.message);
@@ -94,37 +95,72 @@ export const updateProfile = async (req, res) => {
       return res.status(400).json({ message: "Profile pic is required" });
     }
 
-    // Convert base64 to buffer
-    const base64Data = profilePic.split(",")[1];
+    // Wait for Azure to be fully initialized before proceeding
+    await waitForReady;
+
+    // Validate and convert base64 to buffer
+    let base64Data;
+    if (profilePic.includes(",")) {
+      base64Data = profilePic.split(",")[1];
+    } else {
+      base64Data = profilePic;
+    }
+
+    if (!base64Data) {
+      return res.status(400).json({ message: "Invalid image format" });
+    }
+
     const imageBuffer = Buffer.from(base64Data, "base64");
 
-    // Generate unique blob name
-    const blobName = `profile-${userId}-${Date.now()}.jpg`;
+    if (imageBuffer.length === 0) {
+      return res.status(400).json({ message: "Image buffer is empty" });
+    }
+
+    // Detect image format
+    const { ext, mime } = detectImageFormat(base64Data);
+
+    // Generate unique blob name with correct extension
+    const blobName = `profile-${userId}-${Date.now()}.${ext}`;
 
     // Upload to Azure Blob Storage
     const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-    await blockBlobClient.upload(imageBuffer, imageBuffer.length);
+    console.log(`Uploading profile picture: ${blobName} (${mime})`);
+    
+    await blockBlobClient.upload(imageBuffer, imageBuffer.length, {
+      blobHTTPHeaders: { blobContentType: mime },
+    });
 
-    // Get blob URL
-    const profilePicUrl = blockBlobClient.url;
+    console.log(`Profile picture uploaded successfully: ${blobName}`);
 
-    // Update user in database
+    // Store the blob NAME (not SAS URL) in DB — we generate fresh URLs at read time
     const updatedUser = await User.findByIdAndUpdate(
       userId,
-      { profilePic: profilePicUrl },
+      { profilePic: blobName },
       { new: true }
     );
 
-    res.status(200).json(updatedUser);
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Return a fresh SAS URL in the response (but store only blob name in DB)
+    const userResponse = updatedUser.toObject();
+    userResponse.profilePic = await generateSASUrl(blobName);
+    res.status(200).json(userResponse);
   } catch (error) {
-    console.log("error in update profile:", error);
-    res.status(500).json({ message: "Internal server error" });
+    console.error("Error in update profile:", error.message);
+    res.status(500).json({ message: "Failed to upload profile picture: " + error.message });
   }
 };
 
-export const checkAuth = (req, res) => {
+export const checkAuth = async (req, res) => {
   try {
-    res.status(200).json(req.user);
+    // Generate a fresh SAS URL for the profile pic at read time
+    const userObj = req.user.toObject ? req.user.toObject() : { ...req.user };
+    if (userObj.profilePic) {
+      userObj.profilePic = await getBlobUrl(userObj.profilePic);
+    }
+    res.status(200).json(userObj);
   } catch (error) {
     console.log("Error in checkAuth controller", error.message);
     res.status(500).json({ message: "Internal Server Error" });
