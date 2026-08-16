@@ -2,13 +2,26 @@ import { useState, useRef, useEffect } from "react";
 import EmojiPicker from "emoji-picker-react";
 import { Search, X } from "lucide-react";
 
-const TENOR_KEY = "LIVDSRZULELA";
-const TENOR_API = "https://api.tenor.com/v1";
+const GIPHY_API_KEY = import.meta.env.VITE_GIPHY_API_KEY || "";
+const GIPHY_API = "https://api.giphy.com/v1/gifs";
+
+const FALLBACK_GIFS = [
+  { id: "gif-1", title: "Excited", url: "https://media.giphy.com/media/13CoXDiaCcCoyk/giphy.gif" },
+  { id: "gif-2", title: "Party", url: "https://media.giphy.com/media/xT0xeJpnrWC4XWblEk/giphy.gif" },
+  { id: "gif-3", title: "Celebrate", url: "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif" },
+  { id: "gif-4", title: "Smile", url: "https://media.giphy.com/media/3oEjI6SIIHBdRxXI40/giphy.gif" },
+  { id: "gif-5", title: "Thumbs Up", url: "https://media.giphy.com/media/7kn27lnYSAE9O/giphy.gif" },
+  { id: "gif-6", title: "Dance", url: "https://media.giphy.com/media/26BRsKfUc7KzTJlmM/giphy.gif" },
+  { id: "gif-7", title: "Wave", url: "https://media.giphy.com/media/5GoVLqeAOo6PK/giphy.gif" },
+  { id: "gif-8", title: "Happy", url: "https://media.giphy.com/media/3o7TKsQ0kzG5Qf2yqY/giphy.gif" },
+  { id: "gif-9", title: "Love", url: "https://media.giphy.com/media/3orieUe6e5M5oV2Gly/giphy.gif" },
+  { id: "gif-10", title: "Wow", url: "https://media.giphy.com/media/12XMGIWtrHBl5e/giphy.gif" },
+];
 
 const EmojiGifPicker = ({ onEmojiSelect, onGifSelect, theme = "dark" }) => {
   const [activeTab, setActiveTab] = useState("emoji");
   const [query, setQuery] = useState("");
-  const [gifs, setGifs] = useState([]);
+  const [gifs, setGifs] = useState(FALLBACK_GIFS);
   const [isLoadingGifs, setIsLoadingGifs] = useState(false);
   const debounceRef = useRef(null);
 
@@ -19,28 +32,47 @@ const EmojiGifPicker = ({ onEmojiSelect, onGifSelect, theme = "dark" }) => {
   const fetchGifs = async (searchQuery) => {
     setIsLoadingGifs(true);
     try {
+      if (!GIPHY_API_KEY) {
+        setGifs(FALLBACK_GIFS);
+        return;
+      }
+
       const endpoint = searchQuery
-        ? `${TENOR_API}/search?q=${encodeURIComponent(searchQuery)}&key=${TENOR_KEY}&limit=20&contentfilter=medium`
-        : `${TENOR_API}/trending?key=${TENOR_KEY}&limit=20&contentfilter=medium`;
+        ? `${GIPHY_API}/search?api_key=${GIPHY_API_KEY}&q=${encodeURIComponent(searchQuery)}&limit=20&rating=g&lang=en`
+        : `${GIPHY_API}/trending?api_key=${GIPHY_API_KEY}&limit=20&rating=g`;
+
       const res = await fetch(endpoint);
+      if (!res.ok) {
+        throw new Error(`Giphy fetch failed: ${res.status}`);
+      }
+
       const data = await res.json();
-      setGifs(data.results || []);
+      const results = (data.data || [])
+        .map((gif) => ({
+          id: gif.id,
+          title: gif.title || "GIF",
+          url: gif.images?.fixed_height?.url || gif.images?.downsized_medium?.url || gif.images?.original?.url,
+        }))
+        .filter((gif) => gif.url);
+
+      setGifs(results.length > 0 ? results : FALLBACK_GIFS);
     } catch {
-      setGifs([]);
+      setGifs(FALLBACK_GIFS);
     } finally {
       setIsLoadingGifs(false);
     }
   };
 
+  const visibleGifs = query
+    ? gifs.filter((gif) => gif.title.toLowerCase().includes(query.toLowerCase()))
+    : gifs;
+
   const handleSearch = (e) => {
     const val = e.target.value;
     setQuery(val);
     clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => fetchGifs(val), 400);
+    debounceRef.current = setTimeout(() => fetchGifs(val), 350);
   };
-
-  const getGifUrl = (gif) => gif?.media?.[0]?.gif?.url || gif?.media?.[0]?.tinygif?.url || null;
-  const getGifPreview = (gif) => gif?.media?.[0]?.tinygif?.url || gif?.media?.[0]?.gif?.url || null;
 
   /* ── Tab bar shared style ── */
   const tabStyle = (tab) => ({
@@ -111,7 +143,7 @@ const EmojiGifPicker = ({ onEmojiSelect, onGifSelect, theme = "dark" }) => {
                 }}
               />
               {query && (
-                <button onClick={() => { setQuery(""); fetchGifs(""); }} style={{
+                <button onClick={() => setQuery("")} style={{
                   position: "absolute", right: 8, top: "50%",
                   transform: "translateY(-50%)", background: "none",
                   border: "none", color: "rgba(255,255,255,0.3)", cursor: "pointer", padding: 0,
@@ -134,41 +166,36 @@ const EmojiGifPicker = ({ onEmojiSelect, onGifSelect, theme = "dark" }) => {
                   animation: "spin 0.8s linear infinite",
                 }} />
               </div>
-            ) : gifs.length === 0 ? (
+            ) : visibleGifs.length === 0 ? (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "rgba(255,255,255,0.3)" }}>
                 <span style={{ fontSize: 32 }}>🔍</span>
                 <p style={{ fontSize: 13, marginTop: 8 }}>No GIFs found</p>
               </div>
             ) : (
               <div style={{ columns: 2, gap: 6 }}>
-                {gifs.map((gif) => {
-                  const preview = getGifPreview(gif);
-                  const full = getGifUrl(gif);
-                  if (!preview || !full) return null;
-                  return (
-                    <img
-                      key={gif.id}
-                      src={preview}
-                      alt={gif.title || "GIF"}
-                      onClick={() => onGifSelect(full)}
-                      style={{
-                        width: "100%", borderRadius: 8, cursor: "pointer",
-                        marginBottom: 6, display: "block", objectFit: "cover",
-                        transition: "opacity 0.15s",
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.75")}
-                      onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
-                      loading="lazy"
-                    />
-                  );
-                })}
+                {visibleGifs.map((gif) => (
+                  <img
+                    key={gif.id}
+                    src={gif.url}
+                    alt={gif.title || "GIF"}
+                    onClick={() => onGifSelect(gif.url)}
+                    style={{
+                      width: "100%", borderRadius: 8, cursor: "pointer",
+                      marginBottom: 6, display: "block", objectFit: "cover",
+                      transition: "opacity 0.15s",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.75")}
+                    onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+                    loading="lazy"
+                  />
+                ))}
               </div>
             )}
           </div>
 
-          {/* Tenor credit */}
+          {/* Giphy footer */}
           <div style={{ padding: "3px 10px", textAlign: "right", borderTop: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
-            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>Powered by Tenor</span>
+            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>Powered by Giphy</span>
           </div>
         </div>
       )}

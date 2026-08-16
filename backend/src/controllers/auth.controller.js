@@ -1,22 +1,30 @@
-import { generateToken } from "../lib/utils.js";
-import User from "../models/user.model.js";
-import bcrypt from "bcryptjs";
-import { containerClient, generateSASUrl, getBlobUrl, waitForReady, detectImageFormat } from "../lib/cloudinary.js";
+import { generateToken } from '../lib/utils.js';
+import User from '../models/user.model.js';
+import bcrypt from 'bcryptjs';
+import {
+  containerClient,
+  generateSASUrl,
+  getBlobUrl,
+  waitForReady,
+  detectImageFormat,
+} from '../lib/cloudinary.js';
 
 export const signup = async (req, res) => {
   const { fullName, email, password } = req.body;
   try {
     if (!fullName || !email || !password) {
-      return res.status(400).json({ message: "All fields are required" });
+      return res.status(400).json({ message: 'All fields are required' });
     }
 
     if (password.length < 6) {
-      return res.status(400).json({ message: "Password must be at least 6 characters" });
+      return res
+        .status(400)
+        .json({ message: 'Password must be at least 6 characters' });
     }
 
     const user = await User.findOne({ email });
 
-    if (user) return res.status(400).json({ message: "Email already exists" });
+    if (user) return res.status(400).json({ message: 'Email already exists' });
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
@@ -39,11 +47,11 @@ export const signup = async (req, res) => {
         profilePic: newUser.profilePic,
       });
     } else {
-      res.status(400).json({ message: "Invalid user data" });
+      res.status(400).json({ message: 'Invalid user data' });
     }
   } catch (error) {
-    console.log("Error in signup controller", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.log('Error in signup controller', error.message);
+    res.status(500).json({ message: 'Internal Server Error' });
   }
 };
 
@@ -53,12 +61,12 @@ export const login = async (req, res) => {
     const user = await User.findOne({ email });
 
     if (!user) {
-      return res.status(400).json({ message: "Invalid credentials" });
+      return res.status(400).json({ message: 'Invalid credentials' });
     }
 
     const isPasswordCorrect = await bcrypt.compare(password, user.password);
     if (!isPasswordCorrect) {
-      return res.status(400).json({ message: "Invalid credentials" });
+      return res.status(400).json({ message: 'Invalid credentials' });
     }
 
     generateToken(user._id, res);
@@ -67,22 +75,22 @@ export const login = async (req, res) => {
       _id: user._id,
       fullName: user.fullName,
       email: user.email,
-      profilePic: user.profilePic ? await getBlobUrl(user.profilePic) : "",
+      profilePic: user.profilePic ? await getBlobUrl(user.profilePic) : '',
       createdAt: user.createdAt,
     });
   } catch (error) {
-    console.log("Error in login controller", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.log('Error in login controller', error.message);
+    res.status(500).json({ message: 'Internal Server Error' });
   }
 };
 
 export const logout = (req, res) => {
   try {
-    res.cookie("jwt", "", { maxAge: 0 });
-    res.status(200).json({ message: "Logged out successfully" });
+    res.cookie('jwt', '', { maxAge: 0 });
+    res.status(200).json({ message: 'Logged out successfully' });
   } catch (error) {
-    console.log("Error in logout controller", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.log('Error in logout controller', error.message);
+    res.status(500).json({ message: 'Internal Server Error' });
   }
 };
 
@@ -92,7 +100,7 @@ export const updateProfile = async (req, res) => {
     const userId = req.user._id;
 
     if (!profilePic) {
-      return res.status(400).json({ message: "Profile pic is required" });
+      return res.status(400).json({ message: 'Profile pic is required' });
     }
 
     // Wait for Azure to be fully initialized before proceeding
@@ -100,20 +108,20 @@ export const updateProfile = async (req, res) => {
 
     // Validate and convert base64 to buffer
     let base64Data;
-    if (profilePic.includes(",")) {
-      base64Data = profilePic.split(",")[1];
+    if (profilePic.includes(',')) {
+      base64Data = profilePic.split(',')[1];
     } else {
       base64Data = profilePic;
     }
 
     if (!base64Data) {
-      return res.status(400).json({ message: "Invalid image format" });
+      return res.status(400).json({ message: 'Invalid image format' });
     }
 
-    const imageBuffer = Buffer.from(base64Data, "base64");
+    const imageBuffer = Buffer.from(base64Data, 'base64');
 
     if (imageBuffer.length === 0) {
-      return res.status(400).json({ message: "Image buffer is empty" });
+      return res.status(400).json({ message: 'Image buffer is empty' });
     }
 
     // Detect image format
@@ -125,7 +133,7 @@ export const updateProfile = async (req, res) => {
     // Upload to Azure Blob Storage
     const blockBlobClient = containerClient.getBlockBlobClient(blobName);
     console.log(`Uploading profile picture: ${blobName} (${mime})`);
-    
+
     await blockBlobClient.upload(imageBuffer, imageBuffer.length, {
       blobHTTPHeaders: { blobContentType: mime },
     });
@@ -136,11 +144,11 @@ export const updateProfile = async (req, res) => {
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       { profilePic: blobName },
-      { new: true }
+      { new: true },
     );
 
     if (!updatedUser) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: 'User not found' });
     }
 
     // Return a fresh SAS URL in the response (but store only blob name in DB)
@@ -148,8 +156,10 @@ export const updateProfile = async (req, res) => {
     userResponse.profilePic = await generateSASUrl(blobName);
     res.status(200).json(userResponse);
   } catch (error) {
-    console.error("Error in update profile:", error.message);
-    res.status(500).json({ message: "Failed to upload profile picture: " + error.message });
+    console.error('Error in update profile:', error.message);
+    res
+      .status(500)
+      .json({ message: 'Failed to upload profile picture: ' + error.message });
   }
 };
 
@@ -162,7 +172,7 @@ export const checkAuth = async (req, res) => {
     }
     res.status(200).json(userObj);
   } catch (error) {
-    console.log("Error in checkAuth controller", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.log('Error in checkAuth controller', error.message);
+    res.status(500).json({ message: 'Internal Server Error' });
   }
 };
