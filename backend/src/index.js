@@ -15,13 +15,23 @@ dotenv.config();
 
 const PORT = process.env.PORT;
 const __dirname = path.resolve();
+const allowedOrigins = new Set(
+  [process.env.CLIENT_URL, 'http://localhost:5173'].filter(Boolean),
+);
+
+const isAllowedOrigin = (origin) =>
+  !origin ||
+  allowedOrigins.has(origin) ||
+  /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin);
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cookieParser());
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: (origin, callback) => {
+      callback(null, isAllowedOrigin(origin));
+    },
     credentials: true,
   }),
 );
