@@ -25,7 +25,9 @@ export const useAuthStore = create((set, get) => ({
       set({ authUser: res.data });
       get().connectSocket();
     } catch (error) {
-      if (error.response?.status !== 401) {
+      if (error.response?.status === 401) {
+        localStorage.removeItem('token');
+      } else {
         console.error('Error in checkAuth:', error);
       }
       set({ authUser: null });
@@ -38,6 +40,9 @@ export const useAuthStore = create((set, get) => ({
     set({ isSigningUp: true });
     try {
       const res = await axiosInstance.post('/auth/signup', data);
+      if (res.data?.token) {
+        localStorage.setItem('token', res.data.token);
+      }
       set({ authUser: res.data });
       toast.success('Account created successfully');
       get().connectSocket();
@@ -52,6 +57,9 @@ export const useAuthStore = create((set, get) => ({
     set({ isLoggingIn: true });
     try {
       const res = await axiosInstance.post('/auth/login', data);
+      if (res.data?.token) {
+        localStorage.setItem('token', res.data.token);
+      }
       set({ authUser: res.data });
       toast.success('Logged in successfully');
 
@@ -66,11 +74,13 @@ export const useAuthStore = create((set, get) => ({
   logout: async () => {
     try {
       await axiosInstance.post('/auth/logout');
+    } catch (error) {
+      console.log('Error in logout request:', error);
+    } finally {
+      localStorage.removeItem('token');
       set({ authUser: null });
       toast.success('Logged out successfully');
       get().disconnectSocket();
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Unable to log out');
     }
   },
 

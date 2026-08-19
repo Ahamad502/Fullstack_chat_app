@@ -6,12 +6,18 @@ import express from 'express';
 const app = express();
 const server = http.createServer(app);
 
+const clientUrl = process.env.CLIENT_URL ? process.env.CLIENT_URL.replace(/\/+$/, '') : null;
+
 const io = new Server(server, {
   cors: {
     origin: [
-      process.env.CLIENT_URL || 'http://localhost:5173',
-      /^https:\/\/[a-z0-9-]+\.vercel\.app$/i,
-    ],
+      clientUrl,
+      'http://localhost:5173',
+      'http://localhost:3000',
+      /^https:\/\/[a-z0-9-_.]+\.vercel\.app$/i,
+      /^https:\/\/[a-z0-9-_.]+\.onrender\.com$/i,
+    ].filter(Boolean),
+    credentials: true,
   },
 });
 

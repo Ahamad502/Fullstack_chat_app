@@ -16,13 +16,20 @@ dotenv.config();
 const PORT = process.env.PORT;
 const __dirname = path.resolve();
 const allowedOrigins = new Set(
-  [process.env.CLIENT_URL, 'http://localhost:5173'].filter(Boolean),
+  [process.env.CLIENT_URL, 'http://localhost:5173', 'http://localhost:3000']
+    .filter(Boolean)
+    .map((url) => url.replace(/\/+$/, '')),
 );
 
-const isAllowedOrigin = (origin) =>
-  !origin ||
-  allowedOrigins.has(origin) ||
-  /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin);
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  const normalized = origin.replace(/\/+$/, '');
+  if (allowedOrigins.has(normalized) || allowedOrigins.has(origin)) return true;
+  if (/^https:\/\/[a-z0-9-_.]+\.vercel\.app$/i.test(normalized)) return true;
+  if (/^https:\/\/[a-z0-9-_.]+\.onrender\.com$/i.test(normalized)) return true;
+  if (/^http:\/\/localhost:\d+$/i.test(normalized)) return true;
+  return false;
+};
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -30,7 +37,11 @@ app.use(cookieParser());
 app.use(
   cors({
     origin: (origin, callback) => {
-      callback(null, isAllowedOrigin(origin));
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+      } else {
+        callback(null, true);
+      }
     },
     credentials: true,
   }),
