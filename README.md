@@ -2,6 +2,8 @@
 
 ![Demo App](/frontend/public/screenshot-for-readme.png)
 
+🚀 **Live Demo:** [https://fullstack-chat-app-livid-five.vercel.app/login](https://fullstack-chat-app-livid-five.vercel.app/login)
+
 [Video Tutorial on Youtube](https://youtu.be/ntKkVrQqBYY)
 
 ## 📋 Table of Contents
