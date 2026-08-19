@@ -8,7 +8,7 @@ import {
   waitForReady,
   detectImageFormat,
 } from '../lib/cloudinary.js';
-import { getReceiverSocketId, io } from '../lib/socket.js';
+import { getReceiverSocketId, getReceiverSocketIds, io } from '../lib/socket.js';
 
 export const getUsersForSidebar = async (req, res) => {
   try {
@@ -140,9 +140,11 @@ export const sendMessage = async (req, res) => {
 
     console.log('Message saved:', newMessage.image?.substring(0, 80));
 
-    const receiverSocketId = getReceiverSocketId(receiverId);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit('newMessage', msgObj);
+    const receiverSocketIds = getReceiverSocketIds(receiverId);
+    if (receiverSocketIds && receiverSocketIds.length > 0) {
+      receiverSocketIds.forEach((socketId) => {
+        io.to(socketId).emit('newMessage', msgObj);
+      });
     }
 
     res.status(201).json(msgObj);

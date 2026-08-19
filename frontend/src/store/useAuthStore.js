@@ -3,11 +3,17 @@ import { axiosInstance } from '../lib/axios.js';
 import toast from 'react-hot-toast';
 import { io } from 'socket.io-client';
 
-const BASE_URL = import.meta.env.VITE_API_URL
-  ? import.meta.env.VITE_API_URL.replace(/\/api$/, '')
-  : import.meta.env.MODE === 'development'
-    ? 'http://localhost:5001'
-    : '/';
+const getSocketUrl = () => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '').replace(/\/+$/, '');
+  }
+  if (import.meta.env.MODE === 'development') {
+    return 'http://localhost:5001';
+  }
+  return window.location.origin;
+};
+
+const BASE_URL = getSocketUrl();
 
 export const useAuthStore = create((set, get) => ({
   authUser: null,
@@ -99,23 +105,36 @@ export const useAuthStore = create((set, get) => ({
   },
 
   connectSocket: () => {
-    const { authUser } = get();
-    if (!authUser || get().socket?.connected) return;
+    const { authUser, socket } = get();
+    if (!authUser) return;
 
-    const socket = io(BASE_URL, {
+    if (socket?.connected) return;
+
+    if (socket) {
+      socket.disconnect();
+    }
+
+    const newSocket = io(BASE_URL, {
       query: {
         userId: authUser._id,
       },
+      transports: ['websocket', 'polling'],
+      withCredentials: true,
+      autoConnect: true,
     });
-    socket.connect();
 
-    set({ socket: socket });
-
-    socket.on('getOnlineUsers', (userIds) => {
-      set({ onlineUsers: userIds });
+    newSocket.on('getOnlineUsers', (userIds) => {
+      set({ onlineUsers: (userIds || []).map((id) => String(id)) });
     });
+
+    set({ socket: newSocket });
   },
+
   disconnectSocket: () => {
-    if (get().socket?.connected) get().socket.disconnect();
+    const { socket } = get();
+    if (socket) {
+      socket.disconnect();
+      set({ socket: null, onlineUsers: [] });
+    }
   },
 }));

@@ -6,42 +6,61 @@ import express from 'express';
 const app = express();
 const server = http.createServer(app);
 
-const clientUrl = process.env.CLIENT_URL ? process.env.CLIENT_URL.replace(/\/+$/, '') : null;
-
 const io = new Server(server, {
   cors: {
-    origin: [
-      clientUrl,
-      'http://localhost:5173',
-      'http://localhost:3000',
-      /^https:\/\/[a-z0-9-_.]+\.vercel\.app$/i,
-      /^https:\/\/[a-z0-9-_.]+\.onrender\.com$/i,
-    ].filter(Boolean),
+    origin: (origin, callback) => {
+      // Allow all incoming origins with credentials
+      callback(null, true);
+    },
     credentials: true,
   },
 });
 
+// Map of userId -> Set of socketId (supports multiple tabs / windows per user)
+const userSocketMap = {}; // { [userId: string]: Set<string> }
+
 export function getReceiverSocketId(userId) {
-  return userSocketMap[userId];
+  const stringId = String(userId);
+  if (!userSocketMap[stringId]) return null;
+  const sockets = Array.from(userSocketMap[stringId]);
+  return sockets[sockets.length - 1] || null;
 }
 
-// used to store online users
-const userSocketMap = {}; // {userId: socketId}
+export function getReceiverSocketIds(userId) {
+  const stringId = String(userId);
+  if (!userSocketMap[stringId]) return [];
+  return Array.from(userSocketMap[stringId]);
+}
 
 io.on('connection', (socket) => {
-  console.log('A user connected', socket.id);
-
   const userId = socket.handshake.query.userId;
-  if (userId) userSocketMap[userId] = socket.id;
+  console.log('A user connected:', socket.id, 'userId:', userId);
 
-  // io.emit() is used to send events to all the connected clients
+  if (userId && userId !== 'undefined' && userId !== 'null') {
+    const stringUserId = String(userId);
+    if (!userSocketMap[stringUserId]) {
+      userSocketMap[stringUserId] = new Set();
+    }
+    userSocketMap[stringUserId].add(socket.id);
+  }
+
+  // Send unique online user IDs to all connected clients
   io.emit('getOnlineUsers', Object.keys(userSocketMap));
 
   socket.on('disconnect', () => {
-    console.log('A user disconnected', socket.id);
-    delete userSocketMap[userId];
+    console.log('A user disconnected:', socket.id, 'userId:', userId);
+    if (userId && userId !== 'undefined' && userId !== 'null') {
+      const stringUserId = String(userId);
+      if (userSocketMap[stringUserId]) {
+        userSocketMap[stringUserId].delete(socket.id);
+        if (userSocketMap[stringUserId].size === 0) {
+          delete userSocketMap[stringUserId];
+        }
+      }
+    }
     io.emit('getOnlineUsers', Object.keys(userSocketMap));
   });
 });
 
-export { io, app, server };
+export { io, app, server, userSocketMap };
+
